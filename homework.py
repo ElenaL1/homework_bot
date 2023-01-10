@@ -8,7 +8,7 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import HTTPException
+from exceptions import HTTPException, YandexAPIRequestError
 
 load_dotenv()
 
@@ -44,7 +44,7 @@ def check_tokens():
             'окружения во время запуска бота'
         )
         sys.exit()
-    return True
+    return
 
 
 def send_message(bot, message):
@@ -68,12 +68,9 @@ def get_api_answer(timestamp):
             headers=HEADERS,
             params={'from_date': timestamp}
         )
-        answer = response.json()
-    except ConnectionError:
+    except Exception:
         logger.error('недоступность эндпоинта')
-        raise ConnectionError('непроходит запрос к Yandex API.')
-    except answer.JSONDecodeError:
-        raise TypeError('формат данных не JSON')
+        raise YandexAPIRequestError('непроходит запрос к Yandex API.')
     if response.status_code != HTTPStatus.OK:
         code, text = response.status_code, response.text
         detail = f'Код ответа: {code}, сообщение об ошибке: {text}'
@@ -86,6 +83,10 @@ def get_api_answer(timestamp):
             f'некорректный ответ от Yandex API. {detail}'
         )
     else:
+        try:
+            answer = response.json()
+        except answer.JSONDecodeError:
+            raise TypeError('формат данных не JSON')
         return answer
 
 
@@ -113,24 +114,20 @@ def parse_status(homework):
     """Извлекает из информации о конкретной.
     домашней работе статус этой работы.
     """
-    if homework.get('homework_name') and homework.get('status'):
-        homework_name = homework.get('homework_name')
-        status = homework.get('status')
-    else:
+    homework_name = homework.get('homework_name')
+    status = homework.get('status')
+    if homework_name is None or status is None:
         raise KeyError(
             'отсутствие ожидаемых ключей homework_name'
             'и/или status в ответе API'
         )
-    if HOMEWORK_VERDICTS.get(status):
+    if HOMEWORK_VERDICTS.get(status) is not None:
         verdict = HOMEWORK_VERDICTS.get(status)
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
     else:
-        logger.error(
-            'неожиданный статус домашней работы, обнаруженный в ответе API'
-        )
-        raise KeyError(
-            'неожиданный статус домашней работы, обнаруженный в ответе API'
-        )
+        error_detail = 'неожиданный статус домашней работы, обнаруженный в ответе API'
+        logger.error(error_detail)
+        raise KeyError(error_detail)
 
 
 def main():
@@ -144,14 +141,15 @@ def main():
             logger.info('Начали вызов функций в main')
             response = get_api_answer(timestamp)
             check_response(response)
-            new_error = ''
-            if response.get('homeworks'):
+            if len(response.get('homeworks')) != 0:
                 homework = response['homeworks'][0]
                 reply = parse_status(homework)
                 send_message(bot, reply)
             else:
                 logger.debug('отсутствие в ответе новых статусов')
-            timestamp = response['current_date']
+            if response.get('current_date') is not None:
+                timestamp = response.get('current_date')
+            new_error = ''
             logger.info('Закончили вызов функций в main')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
