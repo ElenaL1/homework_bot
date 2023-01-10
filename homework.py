@@ -8,7 +8,7 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import HTTPException, YandexAPIRequestError
+from exceptions import HTTPException, MessageError, YandexAPIRequestError
 
 load_dotenv()
 
@@ -26,7 +26,7 @@ RETRY_PERIOD = 600
 THREE_MONTHS = 131400 * 60
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
+MESSAGE_ERROR = False
 HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
@@ -57,7 +57,10 @@ def send_message(bot, message):
         logger.debug('удачная отправка сообщения в Telegram')
     except telegram.error.TelegramError:
         message = 'сбой при отправке сообщения в Telegram'
-        logger.error(message, exc_info=True)
+        global MESSAGE_ERROR
+        MESSAGE_ERROR = True
+        logger.error(message)
+        raise MessageError(message)
 
 
 def get_api_answer(timestamp):
@@ -121,8 +124,8 @@ def parse_status(homework):
             'отсутствие ожидаемых ключей homework_name'
             'и/или status в ответе API'
         )
-    if HOMEWORK_VERDICTS.get(status) is not None:
-        verdict = HOMEWORK_VERDICTS.get(status)
+    verdict = HOMEWORK_VERDICTS.get(status)
+    if verdict is not None:
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
     else:
         error_detail = ('неожиданный статус домашней работы,'
@@ -155,7 +158,7 @@ def main():
             logger.info('Закончили вызов функций в main')
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            if not sys.exc_info() and error != new_error:
+            if not MESSAGE_ERROR or error != new_error:
                 send_message(bot, message)
                 new_error = error
         time.sleep(RETRY_PERIOD)
