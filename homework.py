@@ -125,7 +125,9 @@ def parse_status(homework):
         verdict = HOMEWORK_VERDICTS.get(status)
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
     else:
-        error_detail = 'неожиданный статус домашней работы, обнаруженный в ответе API'
+        error_detail = ('неожиданный статус домашней работы,'
+                        'обнаруженный в ответе API'
+                        )
         logger.error(error_detail)
         raise KeyError(error_detail)
 
