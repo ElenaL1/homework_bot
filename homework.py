@@ -8,7 +8,7 @@ import requests
 import telegram
 from dotenv import load_dotenv
 
-from exceptions import HTTPException, MessageError, YandexAPIRequestError
+from exceptions import HTTPException, YandexAPIRequestError
 
 load_dotenv()
 
@@ -56,11 +56,9 @@ def send_message(bot, message):
         )
         logger.debug('удачная отправка сообщения в Telegram')
     except telegram.error.TelegramError:
-        message = 'сбой при отправке сообщения в Telegram'
         global MESSAGE_ERROR
         MESSAGE_ERROR = True
-        logger.error(message)
-        raise MessageError(message)
+        logger.error('сбой при отправке сообщения в Telegram')
 
 
 def get_api_answer(timestamp):
@@ -85,12 +83,11 @@ def get_api_answer(timestamp):
         raise response.RequestException(
             f'некорректный ответ от Yandex API. {detail}'
         )
-    else:
-        try:
-            answer = response.json()
-        except answer.JSONDecodeError:
-            raise TypeError('формат данных не JSON')
-        return answer
+    try:
+        answer = response.json()
+    except answer.JSONDecodeError:
+        raise TypeError('формат данных не JSON')
+    return answer
 
 
 def check_response(response):
@@ -125,14 +122,13 @@ def parse_status(homework):
             'и/или status в ответе API'
         )
     verdict = HOMEWORK_VERDICTS.get(status)
-    if verdict is not None:
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    else:
+    if verdict is None:
         error_detail = ('неожиданный статус домашней работы,'
                         'обнаруженный в ответе API'
                         )
         logger.error(error_detail)
         raise KeyError(error_detail)
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def main():
@@ -152,8 +148,7 @@ def main():
                 send_message(bot, reply)
             else:
                 logger.debug('отсутствие в ответе новых статусов')
-            if response.get('current_date') is not None:
-                timestamp = response.get('current_date')
+            timestamp = response.get('current_date', timestamp)
             new_error = ''
             logger.info('Закончили вызов функций в main')
         except Exception as error:
